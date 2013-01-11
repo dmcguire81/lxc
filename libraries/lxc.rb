@@ -3,6 +3,7 @@ class Lxc
   end
   
   attr_reader :name
+  attr_reader :key_file
 
   class << self
     # List running containers
@@ -66,10 +67,12 @@ class Lxc
   # args:: Argument hash
   #   - :base_path -> path to container directory
   #   - :dnsmasq_lease_file -> path to lease file
+  #   - :key_file -> private key to use with ssh
   def initialize(name, args={})
     @name = name
     @base_path = args[:base_path] || '/var/lib/lxc'
     @lease_file = args[:dnsmasq_lease_file] || '/var/lib/misc/dnsmasq.leases'
+    @key_file = args[:key_file]
   end
 
   # Returns if container exists
@@ -186,9 +189,14 @@ class Lxc
   def knife_container(cmd, ip)
     require 'chef/knife/ssh'
     Chef::Knife::Ssh.load_deps
-    k = Chef::Knife::Ssh.new([
-      ip, '-m', '-i', '/opt/hw-lxc-config/id_rsa', '--no-host-key-verify', cmd
-    ])
+    args = [ip, '-m']
+    # Use agent forwarding if the key file is nil or empty
+    if key_file && !key_file.empty?
+      args.push('-i', key_file)
+    end
+    k = Chef::Knife::Ssh.new(args.push(
+      '--no-host-key-verify', cmd
+    ))
     e = nil
     begin
       e = k.run

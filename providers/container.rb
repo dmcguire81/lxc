@@ -2,7 +2,8 @@ def load_current_resource
   new_resource._lxc Lxc.new(
     new_resource.name,
     :base_dir => node[:lxc][:container_directory],
-    :dnsmasq_lease_file => node[:lxc][:dnsmasq_lease_file]
+    :dnsmasq_lease_file => node[:lxc][:dnsmasq_lease_file],
+    :key_file => new_resource.key_file
   )
   # TODO: Use some actual logic here, sheesh
   if(new_resource.static_ip && new_resource.static_gateway.nil?)
@@ -14,18 +15,20 @@ end
 
 action :create do
 
-  #### Add custom key for host based interactions
-  lxc_dir = directory '/opt/hw-lxc-config' do
-    action :nothing
-  end
-  lxc_dir.run_action(:create)
+  #### Add custom key for host based interactions (if it was supplied, but doesn't exist)
+  if new_resource.key_file && !new_resource.key_file.empty? && !::File.exists?(new_resource.key_file)
+    lxc_dir = directory ::File.dirname(new_resource.key_file) do
+      action :nothing
+    end
+    lxc_dir.run_action(:create)
 
-  lxc_key = execute "lxc host_ssh_key" do
-    command "ssh-keygen -P '' -f /opt/hw-lxc-config/id_rsa"
-    creates "/opt/hw-lxc-config/id_rsa"
-    action :nothing
+    lxc_key = execute "lxc host_ssh_key" do
+      command "ssh-keygen -P '' -f #{new_resource.key_file}"
+      creates new_resource.key_file
+      action :nothing
+    end
+    lxc_key.run_action(:run)
   end
-  lxc_key.run_action(:run)
 
   #### Create container
   execute "lxc create[#{new_resource.name}]" do
@@ -89,11 +92,21 @@ action :create do
     end
   end
 
-  #### Ensure host has ssh access into container
+  #### Ensure host has ssh access into container (with agent forwarding under sudo)
   directory ::File.join(new_resource._lxc.rootfs, 'root', '.ssh')
 
   file ::File.join(new_resource._lxc.rootfs, 'root', '.ssh', 'authorized_keys') do
-    content "# Chef generated key file\n#{::File.read('/opt/hw-lxc-config/id_rsa.pub')}\n"
+    content "# Chef generated key file\n#{::File.read(new_resource.authorized_keys_file)}\n"
+  end
+
+  file ::File.join(new_resource._lxc.rootfs, 'etc', 'sudoers.d', 'env_keep') do
+    content "Defaults\tenv_keep = \"SSH_AUTH_SOCK\"\n"
+    mode 0440
+  end
+
+  file ::File.join(new_resource._lxc.rootfs, 'root', '.ssh', 'known_hosts') do
+    content "# Chef copied known_hosts file\n#{::File.read(new_resource.known_hosts_file)}\n"
+    not_if { !new_resource.known_hosts_file }
   end
 
   if(new_resource.chef_enabled || !new_resource.container_commands.empty?)
@@ -151,7 +164,7 @@ action :create do
 
       file "lxc chef-runlist[#{new_resource.name}]" do
         path ::File.join(new_resource._lxc.rootfs, 'etc', 'chef', 'first_run.json')
-        content({:run_list => new_resource.run_list}.to_json)
+        content(new_resource.json_attribs.merge({:run_list => new_resource.run_list}).to_json)
         not_if do
           ::File.exists?(
             ::File.join(new_resource._lxc.rootfs, 'etc', 'chef', 'client.pem')
@@ -212,7 +225,7 @@ action :create do
       ruby_block "lxc run_chef[#{new_resource.name}]" do
         block do
           new_resource._lxc.container_command(
-            "chef-client -K /etc/chef/validator.pem -c /etc/chef/client.rb -j /etc/chef/first_run.json",
+            "chef-client -K /etc/chef/validator.pem -c /etc/chef/client.rb -j /etc/chef/first_run.json -E #{new_resource.environment}",
             new_resource.chef_retries
           )
         end

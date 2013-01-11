@@ -7,6 +7,8 @@ attribute :validator_pem, :kind_of => String, :default => nil
 attribute :server_uri, :kind_of => String
 attribute :node_name, :kind_of => String
 attribute :run_list, :kind_of => Array
+attribute :json_attribs, :kind_of => Hash, :default => {}
+attribute :environment, :kind_of => String, :default => '_default'
 attribute :chef_enabled, :kind_of => [TrueClass, FalseClass], :default => false
 attribute :chef_retries, :kind_of => Fixnum, :default => 0
 attribute :copy_data_bag_secret_file, :kind_of => [TrueClass, FalseClass], :default => false
@@ -22,6 +24,9 @@ attribute :initialize_commands, :kind_of => Array, :default => []
 attribute :new_container, :kind_of => [TrueClass, FalseClass], :default => false
 attribute :template, :equal_to => %w(fedora debian ubuntu ubuntu-cloud), :default => 'ubuntu'
 attribute :create_args, :kind_of => String, :default => ''
+attribute :key_file, :kind_of => String, :default => '/opt/hw-lxc-config/id_rsa'
+attribute :authorized_keys_file, :kind_of => String, :default => '/opt/hw-lxc-config/id_rsa.pub'
+attribute :known_hosts_file, :kind_of => String, :default => nil
 attribute :_lxc
 # TODO: We should ultimately have support for all these templates
 #attribute :template, :equal_to => %w(busybox debian fedora opensuse sshd ubuntu ubuntu-cloud), :default => 'ubuntu'
